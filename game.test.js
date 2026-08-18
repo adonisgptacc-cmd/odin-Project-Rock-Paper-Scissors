@@ -63,6 +63,10 @@ test("playRound reports a computer win and a tie", () => {
   assert.equal(playRound("paper", "paper").winner, "tie");
 });
 
+test("playRound rejects choices outside rock, paper, and scissors", () => {
+  assert.throws(() => playRound("lizard", "rock"), /Invalid choice: lizard/);
+});
+
 test("createGame keeps a running score without a fixed round limit", () => {
   const game = createGame(() => "scissors");
 
@@ -147,6 +151,21 @@ test("initializeGameUI announces the winner and disables choices at five points"
     "You win the game 5 to 0!",
   );
   assert.ok(fakeDocument.choiceButtons.every((button) => button.disabled));
+});
+
+test("initializeGameUI announces when the computer reaches five points", () => {
+  const fakeDocument = createFakeDocument();
+  initializeGameUI(fakeDocument, () => "paper");
+
+  for (let round = 0; round < 5; round += 1) {
+    fakeDocument.choiceButtons[0].click();
+  }
+
+  assert.equal(fakeDocument.elements["#computer-score"].textContent, "5");
+  assert.equal(
+    fakeDocument.elements["#game-result"].textContent,
+    "Computer wins the game 5 to 0.",
+  );
 });
 
 test("initializeGameUI fails clearly when required markup is missing", () => {

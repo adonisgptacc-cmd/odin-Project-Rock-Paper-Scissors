@@ -2,73 +2,156 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  createGame,
   getComputerChoice,
-  getHumanChoice,
-  playGame,
+  initializeGameUI,
+  playRound,
 } = require("./game.js");
 
-test("getComputerChoice maps the random number to rock, paper, or scissors", () => {
+function createFakeElement(choice = "") {
+  const listeners = new Map();
+
+  return {
+    dataset: { choice },
+    disabled: false,
+    textContent: "",
+    addEventListener(eventName, listener) {
+      listeners.set(eventName, listener);
+    },
+    click() {
+      listeners.get("click")?.();
+    },
+  };
+}
+
+function createFakeDocument() {
+  const choiceButtons = ["rock", "paper", "scissors"].map(createFakeElement);
+  const elements = {
+    "#human-score": createFakeElement(),
+    "#computer-score": createFakeElement(),
+    "#round-result": createFakeElement(),
+    "#game-result": createFakeElement(),
+  };
+
+  return {
+    choiceButtons,
+    elements,
+    querySelector(selector) {
+      return elements[selector] ?? null;
+    },
+    querySelectorAll(selector) {
+      return selector === "[data-choice]" ? choiceButtons : [];
+    },
+  };
+}
+
+test("getComputerChoice maps random values to every valid choice", () => {
   assert.equal(getComputerChoice(() => 0), "rock");
   assert.equal(getComputerChoice(() => 0.34), "paper");
   assert.equal(getComputerChoice(() => 0.99), "scissors");
 });
 
-test("getHumanChoice normalizes capitalization", () => {
-  assert.equal(getHumanChoice(() => "RoCk"), "rock");
-});
-
-test("getHumanChoice asks again after an invalid choice", () => {
-  const answers = ["lizard", " PAPER "];
-  const messages = [];
-
-  const choice = getHumanChoice(() => answers.shift(), (message) => messages.push(message));
-
-  assert.equal(choice, "paper");
-  assert.deepEqual(messages, ["Please choose rock, paper, or scissors."]);
-});
-
-test("getHumanChoice reports when the player cancels", () => {
-  assert.throws(() => getHumanChoice(() => null), /Game cancelled/);
-});
-
-test("playGame plays five rounds, tracks scores, and announces the human winner", () => {
-  const humanChoices = ["rock", "paper", "scissors", "rock", "paper"];
-  const computerChoices = ["scissors", "rock", "paper", "rock", "scissors"];
-  const messages = [];
-
-  const result = playGame({
-    getHumanChoice: () => humanChoices.shift(),
-    getComputerChoice: () => computerChoices.shift(),
-    log: (message) => messages.push(message),
+test("playRound accepts mixed-case human choices", () => {
+  assert.deepEqual(playRound("RoCk", "scissors"), {
+    winner: "human",
+    message: "You win! Rock beats Scissors.",
   });
-
-  assert.deepEqual(result, { humanScore: 3, computerScore: 1 });
-  assert.equal(messages.length, 6);
-  assert.match(messages.at(-1), /You win the game! 3 to 1/);
 });
 
-test("playGame announces a computer win", () => {
-  const messages = [];
-
-  const result = playGame({
-    getHumanChoice: () => "rock",
-    getComputerChoice: () => "paper",
-    log: (message) => messages.push(message),
-  });
-
-  assert.deepEqual(result, { humanScore: 0, computerScore: 5 });
-  assert.match(messages.at(-1), /Computer wins the game! 5 to 0/);
+test("playRound reports a computer win and a tie", () => {
+  assert.equal(playRound("rock", "paper").winner, "computer");
+  assert.equal(playRound("paper", "paper").winner, "tie");
 });
 
-test("playGame can announce a tied game", () => {
-  const messages = [];
+test("createGame keeps a running score without a fixed round limit", () => {
+  const game = createGame(() => "scissors");
 
-  const result = playGame({
-    getHumanChoice: () => "scissors",
-    getComputerChoice: () => "scissors",
-    log: (message) => messages.push(message),
+  const firstRound = game.play("rock");
+  const secondRound = game.play("rock");
+
+  assert.deepEqual(firstRound, {
+    humanScore: 1,
+    computerScore: 0,
+    isGameOver: false,
+    roundMessage: "You win! Rock beats Scissors.",
+    gameMessage: "First to 5 points wins.",
   });
+  assert.equal(secondRound.humanScore, 2);
+});
 
-  assert.deepEqual(result, { humanScore: 0, computerScore: 0 });
-  assert.match(messages.at(-1), /The game is a tie! 0 to 0/);
+test("createGame ends when a player reaches five and ignores later plays", () => {
+  const game = createGame(() => "scissors");
+
+  let winningState;
+  for (let round = 0; round < 5; round += 1) {
+    winningState = game.play("rock");
+  }
+
+  const stateAfterAnotherPlay = game.play("paper");
+
+  assert.equal(winningState.isGameOver, true);
+  assert.equal(winningState.gameMessage, "You win the game 5 to 0!");
+  assert.deepEqual(stateAfterAnotherPlay, winningState);
+  assert.notStrictEqual(stateAfterAnotherPlay, winningState);
+});
+
+test("createGame protects its internal score from returned state mutation", () => {
+  const game = createGame(() => "scissors");
+  const returnedState = game.play("rock");
+
+  returnedState.humanScore = 99;
+
+  assert.equal(game.getState().humanScore, 1);
+});
+
+test("initializeGameUI renders the initial state", () => {
+  const fakeDocument = createFakeDocument();
+  initializeGameUI(fakeDocument, () => "scissors");
+
+  assert.equal(fakeDocument.elements["#human-score"].textContent, "0");
+  assert.equal(fakeDocument.elements["#computer-score"].textContent, "0");
+  assert.equal(
+    fakeDocument.elements["#round-result"].textContent,
+    "Make your choice to begin.",
+  );
+  assert.equal(
+    fakeDocument.elements["#game-result"].textContent,
+    "First to 5 points wins.",
+  );
+});
+
+test("initializeGameUI updates the result and score after a button click", () => {
+  const fakeDocument = createFakeDocument();
+  initializeGameUI(fakeDocument, () => "scissors");
+
+  fakeDocument.choiceButtons[0].click();
+
+  assert.equal(fakeDocument.elements["#human-score"].textContent, "1");
+  assert.equal(fakeDocument.elements["#computer-score"].textContent, "0");
+  assert.equal(
+    fakeDocument.elements["#round-result"].textContent,
+    "You win! Rock beats Scissors.",
+  );
+});
+
+test("initializeGameUI announces the winner and disables choices at five points", () => {
+  const fakeDocument = createFakeDocument();
+  initializeGameUI(fakeDocument, () => "scissors");
+
+  for (let round = 0; round < 5; round += 1) {
+    fakeDocument.choiceButtons[0].click();
+  }
+
+  assert.equal(
+    fakeDocument.elements["#game-result"].textContent,
+    "You win the game 5 to 0!",
+  );
+  assert.ok(fakeDocument.choiceButtons.every((button) => button.disabled));
+});
+
+test("initializeGameUI fails clearly when required markup is missing", () => {
+  assert.throws(
+    () => initializeGameUI({ querySelector: () => null, querySelectorAll: () => [] }),
+    /required game elements/i,
+  );
 });

@@ -4,8 +4,48 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rock Paper Scissors</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="style.css">
   </head>
   <body>
+    <main class="game-card">
+      <p class="eyebrow">First to five wins</p>
+      <h1>Rock Paper Scissors</h1>
+      <p class="instructions">Choose your move to play a round against the computer.</p>
+
+      <section class="scoreboard" aria-label="Current score">
+        <div>
+          <span class="score-label">You</span>
+          <strong id="human-score" class="score">0</strong>
+        </div>
+        <span class="score-divider" aria-hidden="true">:</span>
+        <div>
+          <span class="score-label">Computer</span>
+          <strong id="computer-score" class="score">0</strong>
+        </div>
+      </section>
+
+      <section class="choices" aria-label="Choose rock, paper, or scissors">
+        <button type="button" data-choice="rock">
+          <span aria-hidden="true">✊</span>
+          Rock
+        </button>
+        <button type="button" data-choice="paper">
+          <span aria-hidden="true">✋</span>
+          Paper
+        </button>
+        <button type="button" data-choice="scissors">
+          <span aria-hidden="true">✌️</span>
+          Scissors
+        </button>
+      </section>
+
+      <section class="results" aria-live="polite" aria-atomic="true">
+        <p id="round-result">Make your choice to begin.</p>
+        <p id="game-result">First to 5 points wins.</p>
+      </section>
+    </main>
+
     <script src="game.js"></script>
   </body>
 </html>

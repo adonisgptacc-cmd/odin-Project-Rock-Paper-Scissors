@@ -4,84 +4,150 @@ const WINNING_MATCHUPS = {
   paper: "rock",
   scissors: "paper",
 };
-const TOTAL_ROUNDS = 5;
+const WINNING_SCORE = 5;
 
 function getComputerChoice(random = Math.random) {
   const choiceIndex = Math.floor(random() * CHOICES.length);
   return CHOICES[choiceIndex];
 }
 
-function getHumanChoice(promptPlayer = globalThis.prompt, log = console.log) {
-  if (typeof promptPlayer !== "function") {
-    throw new Error("A prompt function is required to get the player's choice.");
+function normalizeChoice(choice) {
+  const normalizedChoice = choice.trim().toLowerCase();
+
+  if (!CHOICES.includes(normalizedChoice)) {
+    throw new RangeError(`Invalid choice: ${choice}`);
   }
 
-  while (true) {
-    const input = promptPlayer("Choose rock, paper, or scissors:");
-
-    if (input === null) {
-      throw new Error("Game cancelled.");
-    }
-
-    const choice = input.trim().toLowerCase();
-
-    if (CHOICES.includes(choice)) {
-      return choice;
-    }
-
-    log("Please choose rock, paper, or scissors.");
-  }
+  return normalizedChoice;
 }
 
 function formatChoice(choice) {
   return choice[0].toUpperCase() + choice.slice(1);
 }
 
-function playGame({
-  getHumanChoice: chooseForHuman = getHumanChoice,
-  getComputerChoice: chooseForComputer = getComputerChoice,
-  log = console.log,
-} = {}) {
-  let humanScore = 0;
-  let computerScore = 0;
+function playRound(humanChoice, computerChoice) {
+  const human = normalizeChoice(humanChoice);
+  const computer = normalizeChoice(computerChoice);
 
-  function playRound(humanChoice, computerChoice) {
-    const normalizedHumanChoice = humanChoice.trim().toLowerCase();
+  if (human === computer) {
+    return {
+      winner: "tie",
+      message: `It's a tie! You both chose ${formatChoice(human)}.`,
+    };
+  }
 
-    if (normalizedHumanChoice === computerChoice) {
-      log(`It's a tie! You both chose ${formatChoice(computerChoice)}.`);
-      return;
+  if (WINNING_MATCHUPS[human] === computer) {
+    return {
+      winner: "human",
+      message: `You win! ${formatChoice(human)} beats ${formatChoice(computer)}.`,
+    };
+  }
+
+  return {
+    winner: "computer",
+    message: `You lose! ${formatChoice(computer)} beats ${formatChoice(human)}.`,
+  };
+}
+
+function getGameMessage(humanScore, computerScore) {
+  if (humanScore === WINNING_SCORE) {
+    return `You win the game ${humanScore} to ${computerScore}!`;
+  }
+
+  if (computerScore === WINNING_SCORE) {
+    return `Computer wins the game ${computerScore} to ${humanScore}.`;
+  }
+
+  return `First to ${WINNING_SCORE} points wins.`;
+}
+
+function createGame(chooseComputer = getComputerChoice) {
+  let state = {
+    humanScore: 0,
+    computerScore: 0,
+    isGameOver: false,
+    roundMessage: "Make your choice to begin.",
+    gameMessage: `First to ${WINNING_SCORE} points wins.`,
+  };
+
+  function getState() {
+    return { ...state };
+  }
+
+  function play(humanChoice) {
+    if (state.isGameOver) {
+      return getState();
     }
 
-    if (WINNING_MATCHUPS[normalizedHumanChoice] === computerChoice) {
-      humanScore += 1;
-      log(`You win! ${formatChoice(normalizedHumanChoice)} beats ${formatChoice(computerChoice)}.`);
-      return;
-    }
+    const round = playRound(humanChoice, chooseComputer());
+    const humanScore = state.humanScore + (round.winner === "human" ? 1 : 0);
+    const computerScore = state.computerScore + (round.winner === "computer" ? 1 : 0);
+    const isGameOver = humanScore === WINNING_SCORE || computerScore === WINNING_SCORE;
 
-    computerScore += 1;
-    log(`You lose! ${formatChoice(computerChoice)} beats ${formatChoice(normalizedHumanChoice)}.`);
+    state = {
+      humanScore,
+      computerScore,
+      isGameOver,
+      roundMessage: round.message,
+      gameMessage: getGameMessage(humanScore, computerScore),
+    };
+
+    return getState();
   }
 
-  for (let round = 0; round < TOTAL_ROUNDS; round += 1) {
-    playRound(chooseForHuman(), chooseForComputer());
+  return { getState, play };
+}
+
+function initializeGameUI(documentRoot, chooseComputer = getComputerChoice) {
+  const choiceButtons = [...documentRoot.querySelectorAll("[data-choice]")];
+  const humanScore = documentRoot.querySelector("#human-score");
+  const computerScore = documentRoot.querySelector("#computer-score");
+  const roundResult = documentRoot.querySelector("#round-result");
+  const gameResult = documentRoot.querySelector("#game-result");
+
+  if (
+    choiceButtons.length !== CHOICES.length ||
+    !humanScore ||
+    !computerScore ||
+    !roundResult ||
+    !gameResult
+  ) {
+    throw new Error("The page is missing required game elements.");
   }
 
-  if (humanScore > computerScore) {
-    log(`You win the game! ${humanScore} to ${computerScore}.`);
-  } else if (computerScore > humanScore) {
-    log(`Computer wins the game! ${computerScore} to ${humanScore}.`);
-  } else {
-    log(`The game is a tie! ${humanScore} to ${computerScore}.`);
+  const game = createGame(chooseComputer);
+
+  function render(state) {
+    humanScore.textContent = String(state.humanScore);
+    computerScore.textContent = String(state.computerScore);
+    roundResult.textContent = state.roundMessage;
+    gameResult.textContent = state.gameMessage;
+
+    choiceButtons.forEach((button) => {
+      button.disabled = state.isGameOver;
+    });
   }
 
-  return { humanScore, computerScore };
+  choiceButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      render(game.play(button.dataset.choice));
+    });
+  });
+
+  render(game.getState());
+
+  return game;
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { getComputerChoice, getHumanChoice, playGame };
+  module.exports = {
+    createGame,
+    getComputerChoice,
+    initializeGameUI,
+    playRound,
+  };
 }
 
-if (typeof window !== "undefined") {
-  playGame();
+if (typeof document !== "undefined") {
+  initializeGameUI(document);
 }
